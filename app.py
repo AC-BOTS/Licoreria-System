@@ -11,6 +11,11 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 st.set_page_config(page_title="AC-BOTS Licorería Premium", layout="wide")
 
+# --- FUNCIÓN PARA OBTENER HORA DE ECUADOR (GMT-5) ---
+def obtener_hora_ecuador():
+    # El servidor suele estar en UTC, restamos 5 horas para Ecuador
+    return datetime.now() - timedelta(hours=5)
+
 # --- 2. FUNCIONES DE BASE DE DATOS ---
 def obtener_datos(tabla):
     res = supabase.table(tabla).select("*").execute()
@@ -28,6 +33,10 @@ def actualizar_stock(nombre_prod, cantidad_cambio, operacion="restar"):
 
 # --- 3. INTERFAZ ---
 st.title("🍾 Sistema de Gestión AC-BOTS")
+# Mostramos la hora actual en la interfaz para confirmar que está bien
+hora_local = obtener_hora_ecuador().strftime("%H:%M:%S")
+st.sidebar.info(f"🕒 Hora Local: {hora_local}")
+
 menu = st.sidebar.radio("Navegación:", ["Ventas", "Entradas", "Inventario", "Editar Productos", "Reporte Detallado"])
 
 # --- SECCIÓN: INVENTARIO ---
@@ -65,7 +74,7 @@ elif menu == "Ventas":
         if st.button("VENDER"):
             supabase.table("ventas").insert({
                 "producto": p_sel, "cantidad": c_sel, "total": total, 
-                "fecha_hora": datetime.now().isoformat()
+                "fecha_hora": obtener_hora_ecuador().isoformat()
             }).execute()
             actualizar_stock(p_sel, c_sel, "restar")
             st.success("Venta guardada.")
@@ -82,7 +91,7 @@ elif menu == "Entradas":
             if st.form_submit_button("Ingresar"):
                 supabase.table("entradas").insert({
                     "producto": p_e, "cantidad": c_e, 
-                    "fecha_hora": datetime.now().isoformat()
+                    "fecha_hora": obtener_hora_ecuador().isoformat()
                 }).execute()
                 actualizar_stock(p_e, c_e, "sumar")
                 st.success("Inventario actualizado.")
@@ -103,23 +112,19 @@ elif menu == "Editar Productos":
                 st.success("Cambios realizados.")
                 st.rerun()
 
-# --- SECCIÓN: REPORTE DETALLADO (CON FILTRO DE FECHAS RECUPERADO) ---
+# --- SECCIÓN: REPORTE DETALLADO ---
 elif menu == "Reporte Detallado":
     st.header("📊 Inteligencia de Negocio")
-    
     df_v = obtener_datos("ventas")
-    
     if not df_v.empty:
-        # AQUÍ ESTÁ EL SELECTOR DE RANGO QUE FALTABA
         st.subheader("📅 Filtrar Reportes")
-        hoy = datetime.now().date()
-        filtro = st.date_input("Seleccione el periodo de análisis:", [hoy - timedelta(days=7), hoy])
+        # Usamos la fecha de Ecuador para el calendario por defecto
+        hoy_ec = obtener_hora_ecuador().date()
+        filtro = st.date_input("Seleccione el periodo:", [hoy_ec - timedelta(days=7), hoy_ec])
         
         if len(filtro) == 2:
-            # Filtramos los datos según el rango
             df_v_f = df_v[(df_v['fecha_hora'].dt.date >= filtro[0]) & (df_v['fecha_hora'].dt.date <= filtro[1])]
-            
-            st.metric("Ventas Totales en el Periodo", f"${df_v_f['total'].sum():.2f}")
+            st.metric("Ventas Totales", f"${df_v_f['total'].sum():.2f}")
             
             tab1, tab2, tab3 = st.tabs(["🍺 Por Marca", "📈 Evolución Temporal", "🚚 Historial de Entradas"])
             
@@ -138,4 +143,4 @@ elif menu == "Reporte Detallado":
                 if not df_e.empty:
                     st.dataframe(df_e.sort_values(by="fecha_hora", ascending=False), use_container_width=True)
     else:
-        st.info("No hay datos para mostrar.")
+        st.info("No hay datos.")
