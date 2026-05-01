@@ -9,11 +9,11 @@ SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJ
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-st.set_page_config(page_title="AC-BOTS Licorería Premium", layout="wide")
+# Configuración de pestaña con el nombre de la licorería
+st.set_page_config(page_title="Licorería Parada 27 | AC-BOTS", layout="wide")
 
 # --- FUNCIÓN PARA OBTENER HORA DE ECUADOR (GMT-5) ---
 def obtener_hora_ecuador():
-    # El servidor suele estar en UTC, restamos 5 horas para Ecuador
     return datetime.now() - timedelta(hours=5)
 
 # --- 2. FUNCIONES DE BASE DE DATOS ---
@@ -32,8 +32,10 @@ def actualizar_stock(nombre_prod, cantidad_cambio, operacion="restar"):
         supabase.table("productos").update({"stock": nuevo_stock}).eq("nombre", nombre_prod).execute()
 
 # --- 3. INTERFAZ ---
-st.title("🍾 Sistema de Gestión AC-BOTS")
-# Mostramos la hora actual en la interfaz para confirmar que está bien
+# Título personalizado con el nombre de la licorería
+st.title("🍺 Licorería Parada 27")
+st.subheader("Sistema de Gestión by AC-BOTS")
+
 hora_local = obtener_hora_ecuador().strftime("%H:%M:%S")
 st.sidebar.info(f"🕒 Hora Local: {hora_local}")
 
@@ -42,15 +44,15 @@ menu = st.sidebar.radio("Navegación:", ["Ventas", "Entradas", "Inventario", "Ed
 # --- SECCIÓN: INVENTARIO ---
 if menu == "Inventario":
     st.header("📦 Control de Inventario")
-    with st.expander("➕ AGREGAR NUEVO PRODUCTO"):
+    with st.expander("➕ AGREGAR NUEVA BEBIDA"):
         with st.form("nuevo_p", clear_on_submit=True):
-            n = st.text_input("Nombre")
-            p = st.number_input("Precio ($)", min_value=0.0)
-            s = st.number_input("Stock Inicial", min_value=0)
+            n = st.text_input("Nombre de la Bebida")
+            p = st.number_input("Precio ($)", min_value=0.0, step=0.05)
+            s = st.number_input("Stock Inicial", min_value=0, step=1)
             if st.form_submit_button("REGISTRAR"):
                 if n:
                     supabase.table("productos").insert({"nombre": n, "precio": p, "stock": s}).execute()
-                    st.success(f"{n} registrado.")
+                    st.success(f"{n} registrado exitosamente.")
                     st.rerun()
 
     df_p = obtener_datos("productos")
@@ -63,21 +65,21 @@ if menu == "Inventario":
 
 # --- SECCIÓN: VENTAS ---
 elif menu == "Ventas":
-    st.header("💰 Nueva Venta")
+    st.header("💰 Registrar Venta")
     df_p = obtener_datos("productos")
     if not df_p.empty:
-        p_sel = st.selectbox("Producto:", df_p['nombre'])
+        p_sel = st.selectbox("Bebida:", df_p['nombre'])
         info = df_p[df_p['nombre'] == p_sel].iloc[0]
         c_sel = st.number_input("Cantidad:", min_value=1, max_value=int(info['stock']) if info['stock'] > 0 else 1)
         total = info['precio'] * c_sel
-        st.subheader(f"Total: ${total:.2f}")
-        if st.button("VENDER"):
+        st.subheader(f"Total a Cobrar: ${total:.2f}")
+        if st.button("CONFIRMAR VENTA"):
             supabase.table("ventas").insert({
                 "producto": p_sel, "cantidad": c_sel, "total": total, 
                 "fecha_hora": obtener_hora_ecuador().isoformat()
             }).execute()
             actualizar_stock(p_sel, c_sel, "restar")
-            st.success("Venta guardada.")
+            st.success("Venta guardada en la base de datos.")
             st.rerun()
 
 # --- SECCIÓN: ENTRADAS ---
@@ -88,45 +90,44 @@ elif menu == "Entradas":
         with st.form("ent"):
             p_e = st.selectbox("¿Qué llegó?", df_p['nombre'])
             c_e = st.number_input("Cantidad:", min_value=1)
-            if st.form_submit_button("Ingresar"):
+            if st.form_submit_button("ACTUALIZAR STOCK"):
                 supabase.table("entradas").insert({
                     "producto": p_e, "cantidad": c_e, 
                     "fecha_hora": obtener_hora_ecuador().isoformat()
                 }).execute()
                 actualizar_stock(p_e, c_e, "sumar")
-                st.success("Inventario actualizado.")
+                st.success("El inventario ha sido actualizado.")
                 st.rerun()
 
 # --- SECCIÓN: EDITAR PRODUCTOS ---
 elif menu == "Editar Productos":
-    st.header("✏️ Modificar Bebidas")
+    st.header("✏️ Modificar Precios o Nombres")
     df_p = obtener_datos("productos")
     if not df_p.empty:
         p_edit = st.selectbox("Seleccione bebida:", df_p['nombre'])
         datos = df_p[df_p['nombre'] == p_edit].iloc[0]
         with st.form("edit"):
-            nuevo_n = st.text_input("Nombre:", value=datos['nombre'])
-            nuevo_p = st.number_input("Precio:", value=float(datos['precio']))
-            if st.form_submit_button("GUARDAR"):
+            nuevo_n = st.text_input("Nuevo Nombre:", value=datos['nombre'])
+            nuevo_p = st.number_input("Nuevo Precio:", value=float(datos['precio']), step=0.05)
+            if st.form_submit_button("GUARDAR CAMBIOS"):
                 supabase.table("productos").update({"nombre": nuevo_n, "precio": nuevo_p}).eq("id", datos['id']).execute()
-                st.success("Cambios realizados.")
+                st.success("Datos actualizados correctamente.")
                 st.rerun()
 
 # --- SECCIÓN: REPORTE DETALLADO ---
 elif menu == "Reporte Detallado":
-    st.header("📊 Inteligencia de Negocio")
+    st.header("📊 Reportes Parada 27")
     df_v = obtener_datos("ventas")
     if not df_v.empty:
-        st.subheader("📅 Filtrar Reportes")
-        # Usamos la fecha de Ecuador para el calendario por defecto
+        st.subheader("📅 Filtro de Fechas")
         hoy_ec = obtener_hora_ecuador().date()
-        filtro = st.date_input("Seleccione el periodo:", [hoy_ec - timedelta(days=7), hoy_ec])
+        filtro = st.date_input("Periodo:", [hoy_ec - timedelta(days=7), hoy_ec])
         
         if len(filtro) == 2:
             df_v_f = df_v[(df_v['fecha_hora'].dt.date >= filtro[0]) & (df_v['fecha_hora'].dt.date <= filtro[1])]
             st.metric("Ventas Totales", f"${df_v_f['total'].sum():.2f}")
             
-            tab1, tab2, tab3 = st.tabs(["🍺 Por Marca", "📈 Evolución Temporal", "🚚 Historial de Entradas"])
+            tab1, tab2, tab3 = st.tabs(["🍺 Ventas por Marca", "📈 Evolución", "🚚 Entradas"])
             
             with tab1:
                 resumen = df_v_f.groupby('producto').agg({'cantidad': 'sum', 'total': 'sum'}).reset_index()
@@ -143,4 +144,4 @@ elif menu == "Reporte Detallado":
                 if not df_e.empty:
                     st.dataframe(df_e.sort_values(by="fecha_hora", ascending=False), use_container_width=True)
     else:
-        st.info("No hay datos.")
+        st.info("No hay registros disponibles.")
